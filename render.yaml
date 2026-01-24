@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: teleconnect-backend
+    env: python
+    plan: free
+    buildCommand: |
+      pip install -r requirements.txt
+      python manage.py collectstatic --noinput
+    startCommand: |
+      python manage.py makemigrations --noinput
+      python manage.py migrate
+      daphne -b 0.0.0.0 -p $PORT teleconnect.asgi:application
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: teleconnect.settings
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: teleconnect-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: teleconnect-redis
+          type: redis
+
+databases:
+  - name: teleconnect-db
+    plan: free
+
+services:
+  - type: redis
+    name: teleconnect-redis
+    plan: free
