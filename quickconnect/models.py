@@ -108,6 +108,9 @@ class Professional(models.Model):
     rejection_reason = models.TextField(blank=True, null=True)
     rejected_at = models.DateTimeField(null=True, blank=True)
     
+     # ADD THIS:
+    is_busy = models.BooleanField(default=False)  # For direct access
+    
     # Verification
     license_number = models.CharField(max_length=100, blank=True, null=True)
     verified = models.BooleanField(default=False)
@@ -332,6 +335,10 @@ class Session(models.Model):
     room_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
     urgency = models.CharField(max_length=20, choices=URGENCY_CHOICES, default='medium')
     mode = models.CharField(max_length=20, choices=MODE_CHOICES, default='instant')
+
+    # ADD ONLY THESE 2 FIELDS (rest already exist):
+    session_id = models.CharField(max_length=255, unique=True, blank=True, null=True)  # Frontend uses this
+    ended_by = models.CharField(max_length=20, null=True, blank=True)  # 'client' or 'professional'
     
     # Timing
     scheduled_start = models.DateTimeField(null=True, blank=True)

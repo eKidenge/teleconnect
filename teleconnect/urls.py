@@ -422,7 +422,11 @@ urlpatterns = [
     # Add this to fix 404 for /api/favorites/
     path('api/favorites/', views.user_favorites, name='favorites-alias'),
     path('api/favorites', views.user_favorites, name='favorites-alias-no-slash'),
-
+    
+    # 2TH JANUARY 2026 ADDITIONS
+    path('api/professional/busy-status/', views.update_busy_status, name='update_busy_status'),
+    path('api/call/started/', views.call_started, name='call_started'),
+    path('api/call/ended/', views.call_ended, name='call_ended'),
 # ========================
 # ADD THESE VIEWS TO views.py
 # ========================

@@ -11865,3 +11865,284 @@ def test_user_favorites(request):
             debug_data['error'] = 'User profile not found'
     
     return JsonResponse(debug_data, status=200)
+
+# =====================
+# 27TH  JUNE 2026 - ADDING FIELDS TO MODELS
+# =====================
+
+# views_calls.py (CORRECTED FOR YOUR MODELS)
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.utils import timezone
+from datetime import datetime
+from django.contrib.auth.models import User
+from .models import Professional, Session, VideoSession, Client
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_busy_status(request):
+    """
+    Update professional's busy/available status
+    POST /api/professional/busy-status/
+    """
+    try:
+        data = request.data
+        professional_id = data.get('professional_id')
+        is_busy = data.get('is_busy', False)
+        session_id = data.get('session_id')
+        client_id = data.get('client_id')
+        
+        print(f"📱 Busy status update: pro_id={professional_id}, busy={is_busy}")
+        
+        # Get the professional
+        try:
+            professional = Professional.objects.get(user_id=professional_id)
+        except Professional.DoesNotExist:
+            return Response({
+                'status': 'error',
+                'message': 'Professional not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Update professional status
+        professional.available = not is_busy  # Set available = opposite of is_busy
+        
+        # If you added is_busy field:
+        if hasattr(professional, 'is_busy'):
+            professional.is_busy = is_busy
+        
+        professional.online_status = True
+        
+        # Find or create session using session_id as room_id
+        if session_id:
+            try:
+                # Try to find session by room_id (frontend's session_id)
+                session = Session.objects.get(room_id=session_id)
+                professional.current_session = session
+            except Session.DoesNotExist:
+                print(f"Session not found with room_id={session_id}, creating...")
+                # Create new session with session_id as room_id
+                session = Session.objects.create(
+                    professional=professional,
+                    client_id=client_id,
+                    session_type='video',  # Default to video
+                    status='active' if is_busy else 'pending',
+                    room_id=session_id,  # Use session_id as room_id
+                    urgency='medium'
+                )
+                professional.current_session = session
+        
+        professional.save()
+        
+        return Response({
+            'status': 'success',
+            'message': f'Professional busy status updated',
+            'professional_id': professional.user.id,
+            'available': professional.available,
+            'is_busy': not professional.available
+        })
+        
+    except Exception as e:
+        print(f"❌ Error updating busy status: {e}")
+        return Response({
+            'status': 'error',
+            'message': str(e)
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def call_started(request):
+    """
+    Mark call as started - Use existing Session model
+    POST /api/call/started/
+    """
+    try:
+        data = request.data
+        session_id = data.get('session_id')  # Frontend's sessionId (use as room_id)
+        client_id = data.get('client_id')
+        professional_id = data.get('professional_id')
+        room_id = data.get('room_id', session_id)  # Zego room_id
+        call_type = data.get('call_type', 'video')
+        
+        print(f"📞 Call started: session_id={session_id}, room_id={room_id}")
+        
+        # Parse timestamp
+        started_at = data.get('started_at')
+        if started_at:
+            try:
+                started_datetime = datetime.fromisoformat(started_at.replace('Z', '+00:00'))
+            except:
+                started_datetime = timezone.now()
+        else:
+            started_datetime = timezone.now()
+        
+        # Get professional
+        try:
+            professional = Professional.objects.get(user_id=professional_id)
+        except Professional.DoesNotExist:
+            return Response({
+                'status': 'error',
+                'message': 'Professional not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Find or create Session
+        session = None
+        room_to_use = room_id or session_id
+        
+        # Try to find by room_id
+        if room_to_use:
+            try:
+                session = Session.objects.get(room_id=room_to_use)
+            except Session.DoesNotExist:
+                pass
+        
+        # Create new session if not found
+        if not session:
+            session = Session.objects.create(
+                professional=professional,
+                client_id=client_id,
+                session_type=call_type,
+                status='active',
+                room_id=room_to_use,
+                actual_start=started_datetime,
+                call_started_at=started_datetime,
+                urgency='medium',
+                call_quality='good'  # Default
+            )
+        else:
+            # Update existing session
+            session.status = 'active'
+            session.actual_start = started_datetime
+            session.call_started_at = started_datetime
+            session.session_type = call_type
+            session.save()
+        
+        # Update professional
+        professional.current_session = session
+        professional.save()
+        
+        # Also update/create VideoSession
+        try:
+            video_session = VideoSession.objects.get(room_id=room_to_use)
+            video_session.status = 'active'
+            video_session.call_started_at = started_datetime
+            video_session.save()
+        except VideoSession.DoesNotExist:
+            try:
+                client = Client.objects.get(user_id=client_id)
+                VideoSession.objects.create(
+                    id=session_id or room_to_use,
+                    professional=professional,
+                    client=client,
+                    room_id=room_to_use,
+                    status='active',
+                    call_started_at=started_datetime
+                )
+            except:
+                print("Could not create VideoSession, but that's OK")
+        
+        return Response({
+            'status': 'success',
+            'message': 'Call started',
+            'session_id': session.id,
+            'room_id': session.room_id,
+            'call_status': session.status
+        })
+        
+    except Exception as e:
+        print(f"❌ Error in call_started: {e}")
+        return Response({
+            'status': 'error',
+            'message': str(e)
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def call_ended(request):
+    """
+    Mark call as ended - Use existing Session model
+    POST /api/call/ended/
+    """
+    try:
+        data = request.data
+        session_id = data.get('session_id')
+        client_id = data.get('client_id')
+        professional_id = data.get('professional_id')
+        room_id = data.get('room_id', session_id)
+        duration = int(data.get('duration', 0))
+        ended_by = data.get('ended_by', 'professional')
+        
+        print(f"📞 Call ended: room_id={room_id}, duration={duration}s")
+        
+        # Parse timestamp
+        ended_at = data.get('ended_at')
+        if ended_at:
+            try:
+                ended_datetime = datetime.fromisoformat(ended_at.replace('Z', '+00:00'))
+            except:
+                ended_datetime = timezone.now()
+        else:
+            ended_datetime = timezone.now()
+        
+        # Find session by room_id
+        session = None
+        if room_id:
+            try:
+                session = Session.objects.get(room_id=room_id)
+            except Session.DoesNotExist:
+                print(f"⚠️ No Session found with room_id={room_id}")
+        
+        # Update Session if found
+        if session:
+            session.status = 'completed'
+            session.ended_at = ended_datetime
+            session.call_ended_at = ended_datetime
+            session.call_duration = duration
+            session.ended_by = ended_by
+            session.save()
+            print(f"✅ Session {session.id} marked as completed")
+        
+        # Update VideoSession
+        if room_id:
+            try:
+                video_session = VideoSession.objects.get(room_id=room_id)
+                video_session.status = 'ended'
+                video_session.call_ended_at = ended_datetime
+                video_session.call_duration = duration
+                video_session.save()
+            except VideoSession.DoesNotExist:
+                pass
+        
+        # Update professional
+        try:
+            professional = Professional.objects.get(user_id=professional_id)
+            professional.available = True
+            professional.is_busy = False if hasattr(professional, 'is_busy') else None
+            professional.current_session = None
+            professional.total_calls += 1
+            professional.total_call_duration += (duration // 60)  # Convert to minutes
+            
+            if professional.total_calls > 0:
+                professional.average_call_duration = (
+                    professional.total_call_duration / professional.total_calls
+                )
+            
+            professional.save()
+            print(f"✅ Professional {professional.name} stats updated")
+        except Exception as e:
+            print(f"⚠️ Error updating professional: {e}")
+        
+        return Response({
+            'status': 'success',
+            'message': 'Call ended',
+            'duration': duration,
+            'ended_by': ended_by
+        })
+        
+    except Exception as e:
+        print(f"❌ Error in call_ended: {e}")
+        return Response({
+            'status': 'error',
+            'message': str(e)
+        }, status=status.HTTP_400_BAD_REQUEST)
