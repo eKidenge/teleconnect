@@ -220,7 +220,7 @@ def api_register(request):
         )
         
         # Create user profile with user_type
-        user_profile = UserProfile.objects.create(
+        #user_profile = UserProfile.objects.create(
             user=user,
             user_type=data['user_type'],
             phone=data.get('phone', '')
@@ -3220,7 +3220,7 @@ def user_profile(request):
             user_type = user_profile.user_type
         except UserProfile.DoesNotExist:
             # Create user profile if it doesn't exist
-            user_profile = UserProfile.objects.create(user=user)
+            #user_profile = UserProfile.objects.create(user=user)
             favorite_professionals = []
             user_type = 'client'
         
