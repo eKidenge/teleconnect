@@ -221,10 +221,10 @@ def api_register(request):
         
         # Create user profile with user_type
         #user_profile = UserProfile.objects.create(
-            user=user,
-            user_type=data['user_type'],
-            phone=data.get('phone', '')
-        )
+            #user=user,
+            #user_type=data['user_type'],
+            #phone=data.get('phone', '')
+        #)
         
         # If professional, create Professional profile with proper data
         if data['user_type'] == 'professional':
